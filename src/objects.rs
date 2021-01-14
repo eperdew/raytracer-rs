@@ -1,4 +1,4 @@
-use rust_3d::{Line3D, Positive, Point3D, Norm3D, Is3D, IsNormalized3D};
+use rust_3d::*;
 use float_ord::FloatOrd;
 use image::Rgb;
 
@@ -6,7 +6,7 @@ use image::Rgb;
 // Intersections
 ////////////////////////////////////////////////////////////////////////////////
 
-pub trait Intersectable {
+pub trait Intersectable: Send + Sync {
     // Returns the closest intersection of `self` with `ray`, if it exists.
     fn intersect(&self, ray: &Line3D) -> Option<Point3D>;
     fn normal(&self, point: &Point3D) -> Option<Norm3D>;
@@ -17,6 +17,7 @@ pub trait Intersectable {
 // Spheres
 ////////////////////////////////////////////////////////////////////////////////
 
+#[derive(Clone, Debug)]
 pub struct SphereObject {
     pub radius: Positive,
     pub center: Point3D,
