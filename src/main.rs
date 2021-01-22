@@ -11,6 +11,9 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::render::TextureAccess;
 
+use std::time::{Duration, Instant};
+use std::thread::sleep;
+
 use objects::*;
 use light::*;
 use utils::*;
@@ -54,24 +57,72 @@ fn make_scene(t: f64) -> Scene {
         center: Point3D::new(0.0, 0.0, 20.0),
         radius: Positive::new(8.0).unwrap(),
 
-        color: hsv_to_rgb(0.5 , 1.0, 1.0),
+        color: hsv_to_rgb(t.cos() , 1.0, 1.0),
     };
     spheres.push(Box::new(big_boy));
 
-    let lights = vec![
-        DirectionalLight {
-            dir: Norm3D::new(Point3D::new(0.0, 0.0, 1.0)).unwrap(),
-            color: Rgba([ 255, 255, 255, 255 ]),
-        },
+    let wall_radius = 100_000_000.0;
+    let floor = SphereObject {
+        center: Point3D::new(0.0, -wall_radius - 5.0, 0.0),
+        radius: Positive::new(wall_radius).unwrap(),
+
+        color: hsv_to_rgb(0.0, 1.0, 1.0),
+    };
+    spheres.push(Box::new(floor));
+
+    {
+        let wall1 = SphereObject {
+            center: Point3D::new(0.0, 0.0, wall_radius + 20.0),
+            radius: Positive::new(wall_radius).unwrap(),
+
+            color: hsv_to_rgb(1.0 * TAU / 5.0, 1.0, 1.0),
+        };
+        let wall2 = SphereObject {
+            center: Point3D::new(0.0, 0.0, -wall_radius - 10.0),
+            radius: Positive::new(wall_radius).unwrap(),
+
+            color: hsv_to_rgb(2.0 * TAU / 5.0, 1.0, 1.0),
+        };
+        let wall3 = SphereObject {
+            center: Point3D::new(-wall_radius - 10.0, 0.0, 0.0),
+            radius: Positive::new(wall_radius).unwrap(),
+
+            color: hsv_to_rgb(3.0 * TAU / 5.0, 1.0, 1.0),
+        };
+        let wall4 = SphereObject {
+            center: Point3D::new(wall_radius + 10.0, 0.0, 0.0),
+            radius: Positive::new(wall_radius).unwrap(),
+
+            color: hsv_to_rgb(4.0 * TAU / 5.0, 1.0, 1.0),
+        };
+
+        spheres.push(Box::new(wall1));
+        spheres.push(Box::new(wall2));
+        spheres.push(Box::new(wall3));
+        spheres.push(Box::new(wall4));
+    }
+
+    let white = Rgba([ 255, 255, 255, 255 ]);
+
+    let directional_lights = vec![
         DirectionalLight {
             dir: Norm3D::new(Point3D::new(1.0, -1.0, -1.0)).unwrap(),
-            color: Rgba([ 255, 255, 255, 255 ]),
+            color: white.clone(),
         },
     ];
 
+    let mut point_lights = Vec::new();
+
+    let light_radius = 5.0;
+    point_lights.push(PointLight {
+        origin: Point3D::new(light_radius * t.sin(), 0.0, light_radius * t.cos()),
+        intensity: 100.0,
+    });
+
     Scene {
         objects: spheres,
-        lights,
+        directional_lights: directional_lights,
+        point_lights: point_lights,
     }
 }
 
@@ -80,7 +131,7 @@ fn render_demo() {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
-    let (width, height) = (200, 200);
+    let (width, height) = (600, 600);
     let (window_width, window_height) = (width * 2, height * 2);
 
     let window = video_subsystem
@@ -100,13 +151,15 @@ fn render_demo() {
     mouse.set_relative_mouse_mode(true);
 
     let mut image = RgbaImage::new(width, height);
+    let mut last_time = Instant::now();
     let mut t = 0.0;
+
     let mut camera = Camera {
         width,
         height,
 
-        rot_x: Rad { val: 0.0 },
-        rot_y: Rad { val: 0.0 },
+        rot_theta: Rad { val: 0.0 },
+        rot_psi: Rad { val: 0.0 },
         location: Point3D::new(0.0, 0.0, 0.0),
     };
 
@@ -134,10 +187,11 @@ fn render_demo() {
 
         canvas.copy(&texture, None, None).expect("Failed to copy texture");
 
-        // TODO: This should really be computed based on the actual time elapsed.
-        let elapsed = 0.01;
-        let camera_speed = 10.0;
-        let turning_speed = 0.1;
+        let now = Instant::now();
+        let elapsed = now.duration_since(last_time).as_secs_f64();
+
+        let camera_speed = 2.0;
+        let turning_speed = 0.02;
 
         for event in event_pump.poll_iter() {
             match event {
@@ -178,8 +232,8 @@ fn render_demo() {
                 },
 
                 Event::MouseMotion { xrel: dx, yrel: dy, .. } => {
-                    camera.rotate_y( dx as f64 * elapsed * turning_speed);
-                    camera.rotate_x(-dy as f64 * elapsed * turning_speed);
+                    camera.rotate_theta( dx as f64 * elapsed * turning_speed);
+                    camera.rotate_psi(   dy as f64 * elapsed * turning_speed);
                 },
                 _ => {}
             }
@@ -199,10 +253,17 @@ fn render_demo() {
         }
 
         canvas.present();
-        // ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
 
         if !paused {
             t += elapsed;
         }
+
+        // 16.6 ms per frame, ideally.
+        let target_time = 0.00166;
+        if elapsed < target_time {
+            sleep(Duration::from_secs_f64(target_time - elapsed));
+        }
+
+        last_time = now;
     }
 }
